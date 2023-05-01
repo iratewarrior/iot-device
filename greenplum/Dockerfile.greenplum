@@ -1,0 +1,22 @@
+FROM coralrain/greenplum:latest
+
+ARG DATABASE_NAME
+ARG DATABASE_USER
+ARG DATABASE_PASSWORD
+
+COPY entrypoint.sh /
+
+RUN sed -i "s/DBNAME=db/DBNAME=${DATABASE_NAME}/" /entrypoint.sh
+RUN sed -i "s/DBUSER=gpuser/DBUSER=${DATABASE_USER}/" /entrypoint.sh
+RUN sed -i "s/DBPASS=pwd/DBPASS=${DATABASE_PASSWORD}/" /entrypoint.sh
+
+WORKDIR /home/gpadmin
+
+COPY gpinitsystem_config_singlenode .
+COPY initdb_gpdb.sql .
+
+RUN sed -i "s/DATABASE_NAME=db/DATABASE_NAME=${DATABASE_NAME}/" gpinitsystem_config_singlenode
+RUN sed -i "s/grant all on public.records to gpuser;/grant all on public.records to ${DATABASE_USER};/" initdb_gpdb.sql
+RUN sed -i "s/grant all on public.filtered_records to gpuser;/grant all on public.filtered_records to ${DATABASE_USER};/" initdb_gpdb.sql
+
+CMD ["sh", "/entrypoint.sh"]

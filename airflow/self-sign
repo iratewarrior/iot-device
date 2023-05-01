@@ -1,0 +1,12 @@
+#!/bin/sh
+
+test ! -z "$1" && test ! -z "$2" || exit 1
+
+TARGET="$1"
+KEY="$TARGET/$2.key"
+CRT="$TARGET/$2.crt"
+
+mkdir -p "$TARGET"
+openssl req -x509 -newkey rsa:4096 -keyout "$KEY" -out "$CRT" -days 9999 -nodes -batch
+chown -R root:root "$TARGET"
+chmod 400 "$KEY" "$CRT"

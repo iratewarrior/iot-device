@@ -1,0 +1,138 @@
+version: '3.8'
+
+services:
+  airflow:
+    container_name: airflow
+    restart: unless-stopped
+    build:
+      context: ./airflow
+      dockerfile: Dockerfile.airflow
+      args:
+        AIRFLOW_USERNAME: ${AIRFLOW_USERNAME:?AIRUSER blank}
+        AIRFLOW_PASSWORD: ${AIRFLOW_PASSWORD:?AIRPASS blank}
+        DATABASE_NAME: ${DATABASE_NAME:?DBNAME blank}
+        DATABASE_USER: ${DATABASE_USER:?DBUSER blank}
+        DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DBPASS blank}
+    networks:
+      default:
+        ipv4_address: 172.16.0.4
+    ports:
+      - 8080:8080
+    volumes:
+      - ./dags:/root/airflow/dags
+      - ./airflow/airflow.cfg:/root/airflow/airflow.cfg
+    env_file: .env
+    depends_on:
+      greenplum:
+        condition: service_healthy
+
+  jupyter:
+    container_name: jupyter
+    restart: unless-stopped
+    image: jupyter/minimal-notebook:notebook-6.5.1
+    ports:
+      - 8888:8888
+    volumes:
+      - ./dags:/home/jovyan/dags
+      - ./consumer:/home/jovyan/consumer
+      - ./producer:/home/jovyan/producer
+    env_file: .env
+    networks:
+      default:
+        ipv4_address: 172.16.0.5
+
+  greenplum:
+    container_name: greenplum
+    restart: unless-stopped
+    build:
+      context: ./greenplum
+      dockerfile: Dockerfile.greenplum
+      args:
+        DATABASE_NAME: ${DATABASE_NAME:?DBNAME blank}
+        DATABASE_USER: ${DATABASE_USER:?DBUSER blank}
+        DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DBPASS blank}
+    networks:
+      default:
+          ipv4_address: 172.16.0.2
+    ports:
+      - 5432:5432
+    volumes:
+      - db:/data
+    healthcheck:
+      test: ["CMD", "test", "-f", "/home/gpadmin/gp.ready"]
+      interval: 1s
+      timeout: 1s
+      retries: 1000
+      start_period: 20s
+
+  zookeeper:
+    container_name: zookeeper
+    image: bitnami/zookeeper:3.8.0
+    ports:
+      - 2181:2181
+    networks:
+      default:
+        ipv4_address: 172.16.0.9
+    env_file: .env
+
+  kafka:
+    container_name: kafka
+    image: bitnami/kafka:3.3.1
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    networks:
+      default:
+        ipv4_address: 172.16.0.3
+    env_file: .env
+    depends_on:
+      - zookeeper
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--list", "--bootstrap-server", "localhost:9092"]
+      interval: 5s
+      timeout: 5s
+      retries: 1000
+      start_period: 15s
+
+  producer:
+      container_name: producer
+      build:
+        context: ./producer
+        dockerfile: Dockerfile.producer
+      networks:
+        default:
+          ipv4_address: 172.16.0.7
+      environment:
+        - PYTHONUNBUFFERED=1
+      depends_on:
+        kafka:
+          condition: service_healthy
+
+  consumer:
+    container_name: consumer
+    build:
+      context: ./consumer
+      dockerfile: Dockerfile.consumer
+      args:
+        DATABASE_NAME: ${DATABASE_NAME:?DBNAME blank}
+        DATABASE_USER: ${DATABASE_USER:?DBUSER blank}
+        DATABASE_PASSWORD: ${DATABASE_PASSWORD:?DBPASS blank}
+    networks:
+      default:
+        ipv4_address: 172.16.0.8
+    environment:
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      greenplum:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: '172.16.0.0/24'
+
+volumes:
+  db:

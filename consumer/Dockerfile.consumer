@@ -1,0 +1,20 @@
+FROM alpine:3.16
+
+ARG DATABASE_NAME
+ARG DATABASE_USER
+ARG DATABASE_PASSWORD
+
+WORKDIR /root/consumer
+
+RUN apk add --update --no-cache python3 py3-pip
+
+COPY requirements.txt .
+COPY consumer.py .
+
+RUN sed -i "s/greenplum_database_name = 'db'/greenplum_database_name = '${DATABASE_NAME}'/" consumer.py
+RUN sed -i "s/greenplum_database_user = 'gpuser'/greenplum_database_user = '${DATABASE_USER}'/" consumer.py
+RUN sed -i "s/greenplum_database_password = 'pwd'/greenplum_database_password = '${DATABASE_PASSWORD}'/" consumer.py
+
+RUN pip3 install -r requirements.txt
+
+CMD [ "python3", "consumer.py" ]
